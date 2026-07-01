@@ -1,0 +1,115 @@
+# ============
+# RDF Messages
+# ============
+#
+# Run as:
+#
+#   eyeron -r examples/rdf-messages.n3 examples/input/rdf-messages.trig
+#
+# See the README section on RDF Message Log replay under -r:
+#   https://eyereasoner.github.io/eyeling/#rdf-message-logs
+#
+# Motivation
+# ----------
+# The RDF Messages draft defines an RDF Message as an RDF dataset interpreted
+# atomically, an RDF Message Stream as an ordered sequence of messages, and an
+# RDF Message Log as a replayable record of such a stream. The draft also says
+# that messages should not be combined by default and that blank-node labels are
+# scoped to the message in which they occur.
+#
+# This example now uses the parser-level syntax directly: the companion input
+# starts with VERSION "1.2-messages" and separates messages with MESSAGE
+# delimiters. Eyeron handles those delimiters before N3 reasoning starts and
+# exposes an internal eymsg: replay view: a stream resource, ordered envelopes,
+# next-envelope links, payload kind, and one payload graph per non-empty message.
+#
+# The rules below validate that replay view. They never hand-model message
+# envelopes in the TriG sidecar. They inspect payload graphs atomically, accept
+# the delimiter-only heartbeat, and check that a reused source-local blank-node
+# label becomes two distinct message-scoped blank nodes.
+
+@prefix : <https://eyereasoner.github.io/eyeling/examples/rdf-messages#>.
+@prefix eymsg: <https://eyereasoner.github.io/eyeling/vocab/message#>.
+@prefix sosa: <http://www.w3.org/ns/sosa/>.
+@prefix math: <http://www.w3.org/2000/10/swap/math#>.
+@prefix list: <http://www.w3.org/2000/10/swap/list#>.
+@prefix log: <http://www.w3.org/2000/10/swap/log#>.
+@prefix string: <http://www.w3.org/2000/10/swap/string#>.
+
+# Every parser-replayed envelope is an explicit message boundary.
+{
+  ?Stream a eymsg:RDFMessageStream;
+    eymsg:envelope ?Envelope.
+  ?Envelope a eymsg:MessageEnvelope;
+    eymsg:offset ?Offset.
+} => {
+  ?Envelope :boundaryExplicit true.
+  ?Stream :replayContains ?Envelope.
+}.
+
+# Payload graphs are inspected with log:includes, so the observations remain
+# inside their message contexts instead of being silently merged.
+{
+  ?Envelope a eymsg:MessageEnvelope;
+    eymsg:payloadKind eymsg:nonEmpty;
+    eymsg:payloadGraph ?Payload.
+  ?Payload log:nameOf ?PayloadContext.
+  ?PayloadContext log:includes { ?Observation sosa:hasSimpleResult ?Result. }.
+} => {
+  ?Envelope :payloadObservation ?Observation.
+  ?Envelope :payloadResult ?Result.
+}.
+
+# Empty messages are valid RDF Messages. The second envelope is a heartbeat even
+# though it has no payload graph.
+{
+  ?Envelope a eymsg:MessageEnvelope;
+    eymsg:payloadKind eymsg:empty.
+} => {
+  ?Envelope :emptyMessageAllowed true.
+  :HeartbeatEvidence :accepted ?Envelope.
+}.
+
+# The input deliberately reuses the same source-local blank-node label in message
+# 1 and message 3. Eyeron rewrites labels per message, so these are distinct
+# blank nodes after replay.
+{
+  ?Stream a eymsg:RDFMessageStream;
+    eymsg:firstEnvelope ?First.
+  ?First eymsg:nextEnvelope ?Second;
+    :payloadObservation ?FirstObservation;
+    :payloadResult ?FirstResult.
+  ?Second eymsg:nextEnvelope ?Third;
+    :emptyMessageAllowed true.
+  ?Third :payloadObservation ?ThirdObservation;
+    :payloadResult ?ThirdResult.
+  ?FirstObservation log:notEqualTo ?ThirdObservation.
+  ?FirstResult math:notEqualTo ?ThirdResult.
+} => {
+  :BlankNodeScope :reusedSourceLabelIsMessageScoped true.
+  :MessageContext :differentObservationsStayContextual true.
+}.
+
+# The Eyeron verdict is emitted only when all parser-replayed message-specific
+# validations have been derived from the stream, ordered envelopes, payload
+# graphs, and built-ins.
+{
+  ?Stream a eymsg:RDFMessageStream;
+    eymsg:orderedEnvelopes ?Messages;
+    eymsg:firstEnvelope ?First.
+  ?Messages list:length ?Count.
+  ?First :boundaryExplicit true;
+    :payloadResult ?FirstResult;
+    eymsg:nextEnvelope ?Second.
+  ?Second :boundaryExplicit true;
+    :emptyMessageAllowed true;
+    eymsg:nextEnvelope ?Third.
+  ?Third :boundaryExplicit true;
+    :payloadResult ?SecondResult.
+  :BlankNodeScope :reusedSourceLabelIsMessageScoped true.
+  :MessageContext :differentObservationsStayContextual true.
+  ("# rdf-messages\n\n## Source files\n\n- [N3 rules](../rdf-messages.n3)\n- [Input RDF Message Log](../input/rdf-messages.trig)\n\n## Answer\nRDF Message Log accepted: %d parser-replayed message boundaries are preserved. The middle message is an empty heartbeat, and the same source-local blank-node label is safely reused because Eyeron scopes blank nodes per message.\n\n## Explanation\nThe input now uses VERSION \\\"1.2-messages\\\" and MESSAGE delimiters instead of hand-written application envelope facts. Eyeron parses the log internally into an eymsg: replay view with ordered envelopes and one payload graph per non-empty message. The rules inspect each payload with log:includes inside its own message formula, so the observation data stays inside the message boundary instead of being treated as one global graph. The two temperature results, %s and %s, are different observations from the same stream and remain contextualized by their message boundaries." ?Count ?FirstResult ?SecondResult) string:format ?Block.
+} => {
+  :rdfMessagesExample log:outputString ?Block.
+  :rdfMessagesExample :demonstrates :ParserLevelMessageLog, :ExplicitBoundaries, :AtomicMessageContext, :EmptyHeartbeat, :MessageScopedBlankNodes.
+}.

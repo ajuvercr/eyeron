@@ -1,0 +1,82 @@
+# =============================
+# RDF Message Flow message log
+# =============================
+#
+# This file is the data half of the runnable example:
+#
+#   eyeron -r examples/rdf-message-flow.n3 examples/input/rdf-message-flow.trig
+#
+# See the README section on RDF Message Log replay under -r:
+#   https://eyereasoner.github.io/eyeling/#rdf-message-logs
+#
+# It is a parser-level RDF Message Log using the RDF 1.2 Messages draft syntax:
+# VERSION "1.2-messages" selects message-log parsing and MESSAGE delimiters
+# separate the ordered RDF Messages. Eyeron replays this log internally by
+# materializing message envelopes and one payload graph per non-empty message.
+# The sidecar itself does not contain application-level envelope facts.
+#
+# The third message is deliberately empty. The same blank node label _:obs is
+# also reused in several messages; an RDF Message Log parser scopes blank node
+# identifiers to each message, so those labels do not collide.
+
+VERSION "1.2-messages"
+PREFIX : <https://eyereasoner.github.io/eyeling/examples/rdf-message-flow#>
+PREFIX flow: <https://eyereasoner.github.io/eyeling/examples/rdf-message-flow/vocab#>
+PREFIX prov: <http://www.w3.org/ns/prov#>
+PREFIX sosa: <http://www.w3.org/ns/sosa/>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+PREFIX see: <https://example.org/see#>
+PREFIX in: <https://example.org/see/input#>
+
+# Message 1: stream context plus first observation.
+:temperatureFlow a flow:RDFMessageStream ;
+  :producer :thermometerA ;
+  :consumer :flowProcessor ;
+  :pipeline (:ingest :validate :interpret :route :sink) ;
+  :highThreshold 26 .
+
+:thermometerA a flow:StreamProducer .
+:flowProcessor a flow:StreamConsumer .
+:archiveSink a flow:StreamConsumer .
+:alertSink a flow:StreamConsumer .
+:heartbeatSink a flow:StreamConsumer .
+
+_:obs a sosa:Observation ;
+  sosa:madeBySensor :thermometerA ;
+  sosa:resultTime "2026-05-12T18:20:00Z"^^xsd:dateTime ;
+  sosa:hasSimpleResult 21 .
+
+in:run a see:InputDataset ;
+  see:name "rdf_message_flow" ;
+  see:title "RDF Message Flow" ;
+  see:sourceFile "examples/rdf-message-flow.n3" ;
+  see:description "A true RDF 1.2 Message Log sidecar. Eyeron parses VERSION 1.2-messages and MESSAGE delimiters into replayable internal message envelopes." ;
+  see:compiler "Eyeron RDF Message Log input" .
+
+MESSAGE
+
+# Message 2: normal observation.
+_:obs a sosa:Observation ;
+  sosa:madeBySensor :thermometerA ;
+  sosa:resultTime "2026-05-12T18:21:00Z"^^xsd:dateTime ;
+  sosa:hasSimpleResult 22 .
+
+MESSAGE
+
+# Message 3: empty heartbeat. The next MESSAGE delimiter finalizes this empty
+# message and opens message 4.
+MESSAGE
+
+# Message 4: hot observation.
+_:obs a sosa:Observation ;
+  sosa:madeBySensor :thermometerA ;
+  sosa:resultTime "2026-05-12T18:23:00Z"^^xsd:dateTime ;
+  sosa:hasSimpleResult 28 .
+
+MESSAGE
+
+# Message 5: hot observation. EOF finalizes the message.
+_:obs a sosa:Observation ;
+  sosa:madeBySensor :thermometerA ;
+  sosa:resultTime "2026-05-12T18:24:00Z"^^xsd:dateTime ;
+  sosa:hasSimpleResult 29 .

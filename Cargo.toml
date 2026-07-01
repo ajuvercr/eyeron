@@ -1,10 +1,10 @@
 [package]
 name = "eyeron"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["Jos De Roo"]
 license = "MIT"
-description = "A native Rust Notation3 reasoner with RDF Messages as a primary integration target."
+description = "A Rust command-line and library implementation of a core N3 reasoner."
 repository = "https://github.com/eyereasoner/eyeron"
 
 [lib]

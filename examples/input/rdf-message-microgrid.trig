@@ -1,0 +1,59 @@
+# ==================================
+# RDF Message Microgrid message log
+# ==================================
+#
+# This file is the data half of the runnable example:
+#
+#   eyeron -r examples/rdf-message-microgrid.n3 examples/input/rdf-message-microgrid.trig
+#
+# See the README section on RDF Message Log replay under -r:
+#   https://eyereasoner.github.io/eyeling/#rdf-message-logs
+#
+# The scene is a clinic operating as an islanded microgrid after a storm. The
+# data arrives as a true RDF Message Log: life-safety loads, power status,
+# flexible demand, and an empty heartbeat. Eyeron parses the MESSAGE boundaries
+# internally and exposes the replay to the N3 rules as eymsg: envelopes.
+
+VERSION "1.2-messages"
+PREFIX : <https://eyereasoner.github.io/eyeling/examples/rdf-message-microgrid#>
+PREFIX see: <https://example.org/see#>
+PREFIX in: <https://example.org/see/input#>
+
+# Message 1: life-safety loads plus example metadata.
+:oxygenConcentrator a :LifeSafetyLoad ;
+  :requiresWatts 500 ;
+  :serves :respiratoryCareRoom .
+
+:vaccineFridge a :ColdChainLoad ;
+  :requiresWatts 120 ;
+  :serves :vaccineColdChain .
+
+in:run a see:InputDataset ;
+  see:name "rdf_message_microgrid" ;
+  see:title "RDF Message Microgrid" ;
+  see:sourceFile "examples/rdf-message-microgrid.n3" ;
+  see:description "A true RDF 1.2 Message Log for a storm clinic microgrid. Eyeron parses MESSAGE delimiters into replayable internal message envelopes for bounded, explainable load-shedding." ;
+  see:compiler "Eyeron RDF Message Log input" .
+
+MESSAGE
+
+# Message 2: current power status.
+:batteryBank a :PowerReserve ;
+  :availableWatts 650 ;
+  :state :islanded .
+
+:solarForecast a :NearTermForecast ;
+  :expectedWatts 150 .
+
+MESSAGE
+
+# Message 3: flexible demand that can safely be shed.
+:evChargers a :FlexibleLoad ;
+  :shedWatts 600 ;
+  :serves :staffVehicles .
+
+MESSAGE
+
+# Message 4: empty heartbeat. The next MESSAGE delimiter finalizes this empty
+# message and leaves no trailing payload.
+MESSAGE

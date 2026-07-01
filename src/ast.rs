@@ -20,7 +20,9 @@ pub const LOG_COLLECT_ALL_IN: &str = "http://www.w3.org/2000/10/swap/log#collect
 pub const LOG_FOR_ALL_IN: &str = "http://www.w3.org/2000/10/swap/log#forAllIn";
 pub const LOG_CONCLUSION: &str = "http://www.w3.org/2000/10/swap/log#conclusion";
 pub const LOG_CONJUNCTION: &str = "http://www.w3.org/2000/10/swap/log#conjunction";
+pub const LOG_INCLUDES: &str = "http://www.w3.org/2000/10/swap/log#includes";
 pub const LOG_NOT_INCLUDES: &str = "http://www.w3.org/2000/10/swap/log#notIncludes";
+pub const LOG_NAME_OF: &str = "http://www.w3.org/2000/10/swap/log#nameOf";
 pub const LOG_URI: &str = "http://www.w3.org/2000/10/swap/log#uri";
 pub const OWL_SAME_AS: &str = "http://www.w3.org/2002/07/owl#sameAs";
 pub const MATH_SUM: &str = "http://www.w3.org/2000/10/swap/math#sum";
@@ -189,6 +191,7 @@ pub fn default_prefixes() -> BTreeMap<String, String> {
     m.insert("string".to_string(), "http://www.w3.org/2000/10/swap/string#".to_string());
     m.insert("list".to_string(), "http://www.w3.org/2000/10/swap/list#".to_string());
     m.insert("time".to_string(), "http://www.w3.org/2000/10/swap/time#".to_string());
+    m.insert("eymsg".to_string(), "https://eyereasoner.github.io/eyeling/vocab/message#".to_string());
     m.insert("dt".to_string(), "https://eyereasoner.github.io/eyeron/datatype#".to_string());
     m.insert("genid".to_string(), "https://eyereasoner.github.io/.well-known/genid/".to_string());
     m
