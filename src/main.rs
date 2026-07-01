@@ -1,5 +1,5 @@
 use eyeron::error::{EyeronError, Result};
-use eyeron::parser::parse_n3;
+use eyeron::parser::{is_rdf_message_log, parse_n3, parse_rdf_message_log};
 use eyeron::printing::{document_debug, result_to_string};
 use eyeron::reasoner::{reason, ReasonerOptions};
 use eyeron::Document;
@@ -16,6 +16,7 @@ struct CliOptions {
     proof: bool,
     rdf: bool,
     stream: bool,
+    stream_messages: bool,
     super_restricted: bool,
     deterministic_skolem: bool,
     files: Vec<String>,
@@ -35,10 +36,14 @@ fn run() -> Result<()> {
         eprintln!("warning: --proof is accepted but proof comments are not implemented in Eyeron yet");
     }
     if opt.rdf {
-        eprintln!("warning: --rdf compatibility mode is accepted but currently parsed as N3/Turtle subset");
+        // RDF compatibility mode is accepted.  Files using VERSION "1.2-messages"
+        // are replayed as RDF Message Logs; other files use the N3/Turtle subset parser.
     }
     if opt.stream {
         eprintln!("warning: --stream is accepted; Eyeron currently emits after the fixpoint is reached");
+    }
+    if opt.stream_messages {
+        // RDF Message Logs are auto-detected by VERSION/MESSAGE delimiters.
     }
     if opt.super_restricted || opt.deterministic_skolem {
         // These flags are currently no-ops, but accepted to ease migration from the JS CLI.
@@ -48,7 +53,7 @@ fn run() -> Result<()> {
     let mut merged = Document::new();
     for (label, text) in &sources {
         let base = if label == "<stdin>" { None } else { path_to_file_iri(label).ok() };
-        match parse_n3(text, base.as_deref()) {
+        match if is_rdf_message_log(text) { parse_rdf_message_log(text, base.as_deref()) } else { parse_n3(text, base.as_deref()) } {
             Ok(doc) => merged.merge(doc),
             Err(err) => return Err(EyeronError::new(err.with_source_location(text, label))),
         }
@@ -89,7 +94,8 @@ fn parse_args(args: Vec<String>) -> Result<CliOptions> {
                 if i >= args.len() { return Err(EyeronError::new(format!("{} requires a value", flag))); }
                 eprintln!("warning: {} is accepted for CLI compatibility but not implemented in Eyeron", flag);
             }
-            "--store-clear" | "--stream-messages" | "--enforce-https" => {
+            "--stream-messages" => opt.stream_messages = true,
+            "--store-clear" | "--enforce-https" => {
                 eprintln!("warning: {} is accepted for CLI compatibility but not implemented in Eyeron", args[i]);
             }
             other if other.starts_with('-') && other != "-" => {
@@ -147,8 +153,9 @@ fn print_help() {
     println!("Options:");
     println!("  -a, --ast                     Print parsed AST/debug form and exit");
     println!("  -p, --proof                   Accepted; proof comments not implemented yet");
-    println!("  -r, --rdf                     Accepted; parsed as N3/Turtle subset");
+    println!("  -r, --rdf                     Enable RDF-compatible input mode; RDF Message Logs are replayed");
     println!("  -t, --stream                  Accepted; output is emitted after fixpoint");
+    println!("      --stream-messages         Accept RDF Message Log input with VERSION/MESSAGE delimiters");
     println!("  -s, --super-restricted        Accepted for compatibility");
     println!("  -d, --deterministic-skolem    Accepted for compatibility");
     println!("  -v, --version                 Print version");

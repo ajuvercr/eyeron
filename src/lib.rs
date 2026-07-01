@@ -12,14 +12,18 @@ pub mod reasoner;
 
 pub use ast::{Document, Literal, Rule, Term, Triple};
 pub use error::{EyeronError, Result};
-pub use parser::parse_n3;
+pub use parser::{is_rdf_message_log, parse_n3, parse_rdf_message_log};
 pub use printing::{document_debug, result_to_string, triples_to_n3};
 pub use reasoner::{reason as reason_document, ReasonerOptions, ReasonerResult};
 
 /// Parse an N3 string, run the forward reasoner, and return the N3 output for
 /// newly-derived triples.
 pub fn reason(input: &str) -> Result<String> {
-    let doc = parse_n3(input, None)?;
+    let doc = if is_rdf_message_log(input) {
+        parse_rdf_message_log(input, None)?
+    } else {
+        parse_n3(input, None)?
+    };
     let result = reason_document(&doc, &ReasonerOptions::default());
     Ok(result_to_string(&doc.prefixes, &result.derived))
 }
@@ -79,4 +83,37 @@ mod tests {
         let out = reason(input).unwrap();
         assert_eq!(out, "ok");
     }
+    #[test]
+    fn rdf_message_log_preserves_utf8_literals() {
+        let input = r#"
+            PREFIX : <http://example.org/>
+            PREFIX log: <http://www.w3.org/2000/10/swap/log#>
+            VERSION "1.2-messages"
+            MESSAGE
+            :reading :label "8.0°C" .
+        "#;
+        let doc = parse_rdf_message_log(input, None).unwrap();
+
+        fn term_has_literal(term: &Term, value: &str) -> bool {
+            match term {
+                Term::Literal(lit) => lit.value == value,
+                Term::List(items) => items.iter().any(|item| term_has_literal(item, value)),
+                Term::Formula(triples) => triples.iter().any(|t| {
+                    term_has_literal(&t.s, value) || term_has_literal(&t.p, value) || term_has_literal(&t.o, value)
+                }),
+                _ => false,
+            }
+        }
+
+        assert!(
+            doc.facts.iter().any(|t| {
+                term_has_literal(&t.s, "8.0°C")
+                    || term_has_literal(&t.p, "8.0°C")
+                    || term_has_literal(&t.o, "8.0°C")
+            }),
+            "{:#?}",
+            doc.facts
+        );
+    }
+
 }

@@ -1,0 +1,130 @@
+# =====================
+# RDF Message Microgrid
+# =====================
+#
+# Run as:
+#
+#   eyeron -r examples/rdf-message-microgrid.n3 examples/input/rdf-message-microgrid.trig
+#
+# See the README section on RDF Message Log replay under -r:
+#   https://eyereasoner.github.io/eyeling/#rdf-message-logs
+#
+# A clinic is running as an islanded microgrid after a storm. Several small
+# systems send RDF data: one message describes life-safety loads, another
+# describes battery and solar status, another describes flexible demand that may
+# be deferred, and a fourth message is an empty heartbeat.
+#
+# The companion input is now a true parser-level RDF Message Log. Eyeron handles
+# VERSION "1.2-messages" and MESSAGE delimiters internally, then exposes a replay
+# view using eymsg: ordered envelopes and payload graphs. The N3 rules therefore
+# focus on the domain decision rather than recreating log replay by hand.
+
+@prefix : <https://eyereasoner.github.io/eyeling/examples/rdf-message-microgrid#>.
+@prefix eymsg: <https://eyereasoner.github.io/eyeling/vocab/message#>.
+@prefix math: <http://www.w3.org/2000/10/swap/math#>.
+@prefix list: <http://www.w3.org/2000/10/swap/list#>.
+@prefix log: <http://www.w3.org/2000/10/swap/log#>.
+@prefix string: <http://www.w3.org/2000/10/swap/string#>.
+
+# Every envelope in the replay view is an explicit parser-recognized boundary.
+{
+  ?Stream a eymsg:RDFMessageStream;
+    eymsg:envelope ?Message.
+  ?Message a eymsg:MessageEnvelope;
+    eymsg:offset ?Offset.
+} => {
+  ?Message :boundaryExplicit true.
+  ?Stream :replayContains ?Message.
+}.
+
+# Empty RDF Messages are valid. Here the fourth envelope is a heartbeat that
+# confirms the stream is still alive without adding any payload triples.
+{
+  ?Message a eymsg:MessageEnvelope;
+    eymsg:payloadKind eymsg:empty.
+} => {
+  ?Message :emptyMessageAllowed true.
+}.
+
+# Inspect the life-safety message inside its own parser-replayed payload graph.
+{
+  ?Message eymsg:payloadGraph ?Payload.
+  ?Payload log:nameOf ?PayloadContext.
+  ?PayloadContext log:includes {
+    :oxygenConcentrator :requiresWatts ?Oxygen.
+    :vaccineFridge :requiresWatts ?Fridge.
+  }.
+  (?Oxygen ?Fridge) math:sum ?CriticalWatts.
+} => {
+  :clinicMicrogrid :criticalWatts ?CriticalWatts.
+  :clinicMicrogrid :mustKeep :oxygenConcentrator, :vaccineFridge.
+}.
+
+# Inspect the power-status message atomically.
+{
+  ?Message eymsg:payloadGraph ?Payload.
+  ?Payload log:nameOf ?PayloadContext.
+  ?PayloadContext log:includes {
+    :batteryBank :availableWatts ?BatteryWatts.
+    :solarForecast :expectedWatts ?SolarWatts.
+  }.
+  (?BatteryWatts ?SolarWatts) math:sum ?AvailableWatts.
+} => {
+  :clinicMicrogrid :availableWatts ?AvailableWatts.
+}.
+
+# Inspect the flexible-demand message atomically. The EV chargers are useful, but
+# they are safe to defer so life-safety loads keep running.
+{
+  ?Message eymsg:payloadGraph ?Payload.
+  ?Payload log:nameOf ?PayloadContext.
+  ?PayloadContext log:includes {
+    :evChargers :shedWatts ?ShedWatts.
+  }.
+} => {
+  :clinicMicrogrid :deferrableWatts ?ShedWatts.
+  :clinicMicrogrid :mayDefer :evChargers.
+}.
+
+# The decision combines conclusions from the separate messages, while preserving
+# the evidence that each conclusion came through an explicit message boundary.
+{
+  :clinicMicrogrid :criticalWatts ?CriticalWatts;
+    :availableWatts ?AvailableWatts;
+    :deferrableWatts ?ShedWatts;
+    :mustKeep :oxygenConcentrator, :vaccineFridge;
+    :mayDefer :evChargers.
+  (?AvailableWatts ?ShedWatts) math:sum ?ProtectedBudget.
+  ?ProtectedBudget math:greaterThan ?CriticalWatts.
+} => {
+  :clinicMicrogrid :protectedBudgetWatts ?ProtectedBudget.
+  :clinicMicrogrid :resilienceAction :protectClinic.
+  :clinicMicrogrid :keeps :oxygenConcentrator, :vaccineFridge.
+  :clinicMicrogrid :defers :evChargers.
+}.
+
+# Emit the example report only when the message stream, empty heartbeat, atomic
+# payload inspection, and protection decision have all been derived.
+{
+  ?Stream a eymsg:RDFMessageStream;
+    eymsg:orderedEnvelopes ?Messages;
+    eymsg:firstEnvelope ?M1.
+  ?Messages list:length ?Count.
+  ?M1 :boundaryExplicit true;
+    eymsg:nextEnvelope ?M2.
+  ?M2 :boundaryExplicit true;
+    eymsg:nextEnvelope ?M3.
+  ?M3 :boundaryExplicit true;
+    eymsg:nextEnvelope ?M4.
+  ?M4 :boundaryExplicit true;
+    :emptyMessageAllowed true.
+  :clinicMicrogrid :criticalWatts ?CriticalWatts;
+    :availableWatts ?AvailableWatts;
+    :deferrableWatts ?ShedWatts;
+    :protectedBudgetWatts ?ProtectedBudget;
+    :resilienceAction :protectClinic.
+  ("# rdf-message-microgrid\n\n## Source files\n\n- [N3 rules](../rdf-message-microgrid.n3)\n- [Input RDF Message Log](../input/rdf-message-microgrid.trig)\n\n## Answer\nStorm clinic microgrid accepted: %d parser-replayed RDF Messages were processed atomically. Critical care needs %d W, current battery plus solar gives %d W, and deferring the EV chargers frees %d W, so the protected budget is %d W. The reasoned action is to keep the oxygen concentrator and vaccine fridge online, while deferring EV charging.\n\n## Why this is an RDF Message Log example\nThe input now uses VERSION \\\"1.2-messages\\\" and MESSAGE delimiters. Eyeron parses those boundaries internally into an eymsg: replay view, so the rules do not need hand-written application envelopes. Each non-empty message is inspected with log:includes inside its own payload formula, and the final delimiter-only message is replayed as an empty heartbeat. The decision combines only the derived conclusions needed for load shedding while keeping the explanation tied to explicit message boundaries." ?Count ?CriticalWatts ?AvailableWatts ?ShedWatts ?ProtectedBudget) string:format ?Block.
+} => {
+  :rdfMessageMicrogridExample log:outputString ?Block.
+  :rdfMessageMicrogridExample :demonstrates :ParserLevelMessageLog, :AtomicMessageContext, :EmptyHeartbeat, :ReplayableMessageLog, :ResilientDecisionSupport.
+}.

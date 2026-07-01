@@ -457,7 +457,7 @@ fn term_contains_blank(term: &Term) -> bool {
 fn is_builtin_iri(iri: &str) -> bool {
     matches!(iri,
         LOG_EQUAL_TO | LOG_NOT_EQUAL_TO | LOG_COLLECT_ALL_IN | LOG_FOR_ALL_IN
-        | LOG_CONCLUSION | LOG_CONJUNCTION | LOG_NOT_INCLUDES | LOG_URI
+        | LOG_CONCLUSION | LOG_CONJUNCTION | LOG_INCLUDES | LOG_NOT_INCLUDES | LOG_URI
         | RDF_FIRST | RDF_REST | LIST_FIRST | LIST_REST
         | LIST_APPEND | LIST_ITERATE | LIST_MAP | LIST_FIRST_REST | LIST_REVERSE
         | LIST_SORT | LIST_NOT_MEMBER
@@ -979,6 +979,7 @@ fn eval_builtin(
         Term::Iri(ref iri) if iri == LOG_FOR_ALL_IN => Some(eval_for_all_in(&premise.s, &premise.o, bindings, facts, fact_index, rules, depth, backward_stack, budget)),
         Term::Iri(ref iri) if iri == LOG_CONCLUSION => Some(eval_log_conclusion(&premise.s, &premise.o, bindings)),
         Term::Iri(ref iri) if iri == LOG_CONJUNCTION => Some(eval_log_conjunction(&premise.s, &premise.o, bindings)),
+        Term::Iri(ref iri) if iri == LOG_INCLUDES => Some(eval_log_includes(&premise.s, &premise.o, bindings)),
         Term::Iri(ref iri) if iri == LOG_NOT_INCLUDES => Some(eval_log_not_includes(&premise.s, &premise.o, bindings)),
         Term::Iri(ref iri) if iri == LOG_URI => Some(eval_log_uri(&premise.s, &premise.o, bindings)),
         Term::Iri(ref iri) if iri == RDF_FIRST || iri == LIST_FIRST => Some(eval_rdf_first(&premise.s, &premise.o, bindings)),
@@ -1167,6 +1168,28 @@ fn eval_log_conjunction(subject: &Term, object: &Term, bindings: &Bindings) -> V
     }
     let mut b = bindings.clone();
     if unify_term(object, &Term::Formula(deduped), &mut b) { vec![canonicalize_bindings(&b)] } else { Vec::new() }
+}
+
+
+fn eval_log_includes(subject: &Term, object: &Term, bindings: &Bindings) -> Vec<Bindings> {
+    let Term::Formula(scope) = resolve(subject, bindings) else { return Vec::new(); };
+    let Term::Formula(pattern) = resolve(object, bindings) else { return Vec::new(); };
+    let empty_rules: Vec<Rule> = Vec::new();
+    let mut budget = SearchBudget::default();
+    let mut solutions = Vec::new();
+    match_premise_at(
+        &pattern,
+        &scope,
+        None,
+        &empty_rules,
+        0,
+        bindings.clone(),
+        0,
+        &mut HashSet::new(),
+        &mut budget,
+        &mut solutions,
+    );
+    solutions.into_iter().map(|b| canonicalize_bindings(&b)).collect()
 }
 
 fn eval_log_not_includes(subject: &Term, object: &Term, bindings: &Bindings) -> Vec<Bindings> {

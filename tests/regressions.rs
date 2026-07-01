@@ -1,4 +1,4 @@
-use eyeron::{parse_n3, reason, reason_document, result_to_string, ReasonerOptions};
+use eyeron::{is_rdf_message_log, parse_n3, parse_rdf_message_log, reason, reason_document, result_to_string, Document, ReasonerOptions};
 
 fn check_golden_non_prefix_lines(name: &str, source: &str, golden: &str) -> std::result::Result<(), String> {
     let out = reason(source).map_err(|err| format!("{} failed: {}", name, err))?;
@@ -12,6 +12,26 @@ fn check_golden_non_prefix_lines(name: &str, source: &str, golden: &str) -> std:
 
 fn assert_golden_non_prefix_lines(name: &str, source: &str, golden: &str) {
     check_golden_non_prefix_lines(name, source, golden).unwrap_or_else(|msg| panic!("{}", msg));
+}
+
+fn check_golden_documents(name: &str, sources: Vec<(&str, &str)>, golden: &str) -> std::result::Result<(), String> {
+    let mut doc = Document::new();
+    for (label, source) in sources {
+        let parsed = if is_rdf_message_log(source) {
+            parse_rdf_message_log(source, None)
+        } else {
+            parse_n3(source, None)
+        }.map_err(|err| format!("{} failed to parse {}: {}", name, label, err))?;
+        doc.merge(parsed);
+    }
+    let result = reason_document(&doc, &ReasonerOptions::default());
+    let out = result_to_string(&doc.prefixes, &result.derived);
+    for expected in stable_golden_lines(golden) {
+        if !out.contains(expected) {
+            return Err(format!("{} missing golden line `{}`\nactual:\n{}", name, expected, out));
+        }
+    }
+    Ok(())
 }
 
 fn stable_golden_lines(golden: &str) -> impl Iterator<Item = &str> {
@@ -206,13 +226,24 @@ fn all_packaged_example_goldens_match_expected_lines() {
 
         let source = fs::read_to_string(&source_path)
             .unwrap_or_else(|err| panic!("failed to read {}: {}", source_path.display(), err));
+        let input_path = root.join("examples").join("input").join(format!("{}.trig", name));
+        let input = if input_path.exists() {
+            Some(fs::read_to_string(&input_path)
+                .unwrap_or_else(|err| panic!("failed to read {}: {}", input_path.display(), err)))
+        } else {
+            None
+        };
         let golden = fs::read_to_string(&golden_path)
             .unwrap_or_else(|err| panic!("failed to read {}: {}", golden_path.display(), err));
 
         let (tx, rx) = std::sync::mpsc::channel();
         let thread_name = name.clone();
         std::thread::spawn(move || {
-            let result = check_golden_non_prefix_lines(&thread_name, &source, &golden);
+            let mut sources = vec![("rules", source.as_str())];
+            if let Some(input) = input.as_ref() {
+                sources.push(("input", input.as_str()));
+            }
+            let result = check_golden_documents(&thread_name, sources, &golden);
             let _ = tx.send(result);
         });
 

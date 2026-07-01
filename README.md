@@ -27,7 +27,7 @@ Eyeron currently supports the core constructs used by the bundled examples:
 
 Implemented built-in families include a practical subset of:
 
-- `log:`: equality, inequality, query, collect/conjunction/conclusion helpers, URI conversion, and scoped formula operations used by the examples;
+- `log:`: equality, inequality, query, `includes`/`notIncludes`, collect/conjunction/conclusion helpers, URI conversion, and scoped formula operations used by the examples;
 - `math:`: sum, difference, numeric comparisons, and numeric equality/inequality;
 - `list:`: first, rest, firstRest, last, length, member, memberAt, in, notMember, remove, append, reverse, sort, iterate, and map;
 - `string:`: comparison, concatenation, containment, starts/ends-with, regex match/not-match, replace, scrape, and simple formatting;
@@ -142,16 +142,44 @@ fn run(input: &str) -> eyeron::Result<String> {
 
 ## RDF Messages
 
-RDF Messages support is a primary integration goal for Eyeron. The intent is to make Eyeron useful as a native Rust reasoner in RDF message pipelines, not as a browser/WASM package or an RDF-JS data-model adapter.
+RDF Messages support is a primary integration target for Eyeron. Files that use the draft replay syntax
 
-Planned RDF Messages work includes:
+```text
+VERSION "1.2-messages"
+...
+MESSAGE
+...
+MESSAGE
+...
+```
 
-- reading RDF Messages as an input stream;
-- writing derived RDF Messages as an output stream;
-- preserving message boundaries where possible;
-- mapping supported N3/RDF terms into the message representation without going through JavaScript object models.
+are parsed as RDF Message Logs. Eyeron materializes an internal replay view using the `eymsg:` vocabulary:
 
-The current first release focuses on N3 file input/output and the bundled example suite. RDF Messages support should be treated as the next important integration layer.
+- one `eymsg:RDFMessageStream` resource;
+- one `eymsg:MessageEnvelope` per message boundary;
+- `eymsg:firstEnvelope`, `eymsg:nextEnvelope`, and `eymsg:orderedEnvelopes` links;
+- `eymsg:payloadKind eymsg:nonEmpty` or `eymsg:payloadKind eymsg:empty`;
+- one payload graph resource per non-empty message, connected to a quoted formula with `log:nameOf`.
+
+Rules can inspect payloads atomically with `log:includes` without merging message bodies into the ordinary fact graph. Blank-node labels in the message-log input are scoped per message before payload formulas are exposed to reasoning, and UTF-8 string literals are preserved during message replay.
+
+Run the basic RDF Messages example with its message-log sidecar:
+
+```bash
+cargo run -- -r examples/rdf-messages.n3 examples/input/rdf-messages.trig
+```
+
+Other bundled RDF Message Log examples:
+
+```bash
+cargo run -- -r examples/rdf-message-flow.n3 examples/input/rdf-message-flow.trig
+cargo run -- -r examples/rdf-message-microgrid.n3 examples/input/rdf-message-microgrid.trig
+cargo run -- -r examples/rdf-message-window-repair.n3 examples/input/rdf-message-window-repair.trig
+cargo run -- -r examples/rdf-message-ldes-incremental.n3 examples/input/rdf-message-ldes-incremental.trig
+cargo run -- -r examples/rdf-message-cold-chain-recall.n3 examples/input/rdf-message-cold-chain-recall.trig
+```
+
+The current implementation is replay-oriented: it reads a finite RDF Message Log and reasons over the exposed replay view. Continuous streaming input/output remains future work.
 
 ## Testing
 
@@ -176,7 +204,7 @@ ok examples/hanoi.n3 (0.012s)
 
 The comparison checks stable output lines rather than exact byte-for-byte output. This avoids false failures caused by derived triple ordering or generated blank-node labels.
 
-The bundled examples include rule, list, string, log, time, algebraic, policy/alignment, and deep-taxonomy workloads. The five `deep-taxonomy-*` examples are included in the normal `cargo test` sweep and exercise the agenda-based single-premise rule path.
+The bundled examples include rule, list, string, log, time, algebraic, policy/alignment, RDF Message Log, and deep-taxonomy workloads. The five `deep-taxonomy-*` examples are included in the normal `cargo test` sweep and exercise the agenda-based single-premise rule path.
 
 ## Examples
 
@@ -195,6 +223,7 @@ cargo run -- examples/string-builtins-tests.n3
 cargo run -- examples/hanoi.n3
 cargo run -- examples/gray-code-counter.n3
 cargo run -- examples/deep-taxonomy-100000.n3
+cargo run -- -r examples/rdf-messages.n3 examples/input/rdf-messages.trig
 ```
 
 ## Performance notes
@@ -210,7 +239,7 @@ Eyeron does not target browser compatibility or RDF-JS compatibility. Those belo
 This first release focuses on the core reasoning path and the bundled example suite. The following areas are intentionally limited or incomplete:
 
 - full RDF 1.2 / TriG parsing modes;
-- RDF Messages streaming input/output is not yet complete;
+- continuous RDF Messages streaming input/output beyond finite log replay;
 - external URL dereferencing;
 - persistent fact stores;
 - proof trace comments and full explanation output;
